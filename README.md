@@ -1,3 +1,42 @@
+# 🏛️ CBSL Compliance & Transaction Categorization Engine (PoC)
+
+> **A proposal for automating regulatory returns in Sri Lankan Banking using On-Premise AI.**
+
+![Status](https://img.shields.io/badge/Status-Prototype-orange) ![Python](https://img.shields.io/badge/Python-3.10-blue) ![License](https://img.shields.io/badge/License-MIT-green)
+
+## ⚠️ DISCLAIMER: Educational Prototype Only
+This software is a Proof of Concept (PoC) designed to demonstrate the capabilities of **Local LLMs** in regulatory reporting. It is **not** a production-ready banking system and has not been audited for security by the Central Bank of Sri Lanka (CBSL). Use this code for research and testing purposes only. The author (Amila Dayananda) assumes no liability for financial losses or non-compliance resulting from the use of this code in a live environment.
+*Note: All data shown in screenshots is synthetically generated.*
+
+## 📖 Overview
+Sri Lankan banks face a challenge: **Automating CBSL reporting (ITRS, FinNet, goAML)** without sending sensitive customer data to the cloud.
+
+This solution proposes a **Hybrid "Local AI" Pipeline**:
+1.  **Product Mapping:** Instant categorization for internal codes (e.g., `LN_PMT`).
+2.  **Local LLM:** A privacy-first AI model (e.g., Llama 3) running on-premise to categorize vague narrations (e.g., "Uni fees") into ITRS Purpose Codes.
+3.  **Human-in-the-Loop UI:** A dashboard for Compliance Officers to review low-confidence transactions.
+
+## 🏗 Architecture
+[Core Banking DB] -> [Python ETL] -> [Local LLM (Ollama)] -> [Streamlit Dashboard] -> [FinNet XML/CSV]
+
+## 💻 Tech Stack
+* **Python 3.10**
+* **Streamlit** (For the Compliance Dashboard UI)
+* **Pandas** (Data Processing)
+* **Mock Local LLM** (Simulated for this demo)
+
+## 🚀 How to Run
+1.  Install dependencies:
+    ```bash
+    pip install streamlit pandas
+    ```
+2.  Run the application:
+    ```bash
+    streamlit run app.py
+    ```
+
+
+
 CBSL Total Transaction Reporting Engine 🇱🇰
 A production-ready framework for Sri Lankan financial institutions to automate 100% of regulatory returns. This engine ingests daily transaction logs and categorizes every single line item using a "Waterfall" logic approach to balance speed and accuracy.
 
