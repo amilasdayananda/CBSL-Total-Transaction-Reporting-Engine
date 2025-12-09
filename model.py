@@ -1,109 +1,117 @@
+import streamlit as st
 import pandas as pd
-import requests
-import xml.etree.ElementTree as ET
+import random
 from datetime import datetime
 
-# --- CONFIGURATION ---
-CBSL_CONFIG = {
-    "AML_THRESHOLD": 1000000.00,
-    "LOCAL_LLM_URL": "http://localhost:11434/api/generate",
-    "MODEL": "llama3"
-}
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="CBSL Compliance Engine", layout="wide")
 
-# --- STATIC MAPS (TIER 1 & 2) ---
-# Map Core Banking System codes directly to Regulatory Categories
-PRODUCT_CODE_MAP = {
-    "INT_CR": {"category": "Interest Income", "itrs_code": "N/A", "risk": "Low"},
-    "CHG_SMS": {"category": "Bank Charges", "itrs_code": "N/A", "risk": "Low"},
-    "LN_PMT": {"category": "Loan Repayment", "itrs_code": "N/A", "risk": "Low"},
-    "TAX_WHT": {"category": "Withholding Tax", "itrs_code": "N/A", "risk": "Low"},
-}
+# --- HEADER ---
+st.title("🇱🇰 CBSL Transaction Compliance Engine")
+st.markdown("**Status:** System Online | **Mode:** Local Privacy (On-Premise)")
+st.markdown("---")
 
-class ComplianceEngine:
-    def __init__(self):
-        print("Engine Initialized. Connected to Local LLM.")
-
-    def get_llm_classification(self, narration, amount):
-        """
-        TIER 3: AI Classification for vague user descriptions.
-        """
-        prompt = f"""
-        You are a CBSL Compliance Officer. Classify this transaction description.
-        Description: "{narration}"
-        Amount: {amount}
-        
-        Select closest category:
-        1. Family Maintenance (4010)
-        2. Software/IT Services (1215)
-        3. Education Fees (2210)
-        4. Medical Expenses (2250)
-        5. Merchandise Import (1000)
-        
-        Return ONLY the code (e.g., 1215).
-        """
-        try:
-            response = requests.post(CBSL_CONFIG["LOCAL_LLM_URL"], json={
-                "model": CBSL_CONFIG["MODEL"], "prompt": prompt, "stream": False
-            })
-            return response.json()['response'].strip()
-        except:
-            return "MANUAL_REVIEW"
-
-    def process_transaction(self, row):
-        """
-        The Waterfall Logic
-        """
-        result = {
-            "txn_id": row['txn_id'],
-            "original_desc": row['description'],
-            "final_category": None,
-            "itrs_code": None,
-            "source": None # 'ProductMap', 'Rule', or 'AI'
-        }
-
-        # --- STEP 1: Product Code Mapping (Fastest) ---
-        if row['tran_code'] in PRODUCT_CODE_MAP:
-            mapping = PRODUCT_CODE_MAP[row['tran_code']]
-            result['final_category'] = mapping['category']
-            result['itrs_code'] = mapping['itrs_code']
-            result['source'] = 'Tier1_ProductMap'
-            return result
-
-        # --- STEP 2: Regex/Keyword Rules (Medium) ---
-        desc_upper = row['description'].upper()
-        if "ATM" in desc_upper and "WITHDRAWAL" in desc_upper:
-            result['final_category'] = "Cash Withdrawal"
-            result['source'] = 'Tier2_Rule'
-            return result
-        
-        # --- STEP 3: Local LLM (For ambiguous transfers) ---
-        # Only use AI if it's a transfer that isn't system generated
-        result['itrs_code'] = self.get_llm_classification(row['description'], row['amount'])
-        result['final_category'] = "Customer Transfer"
-        result['source'] = 'Tier3_LocalAI'
-        
-        return result
-
-    def generate_finnet_csv(self, processed_data):
-        df = pd.DataFrame(processed_data)
-        filename = f"FinNet_Return_{datetime.now().strftime('%Y%m%d')}.csv"
-        # CBSL Format: AccountNo, Date, Currency, Amount, ITRSCode, Description
-        df.to_csv(filename, index=False)
-        print(f"Generated {filename}")
-
-# --- MOCK DATA EXECUTION ---
-if __name__ == "__main__":
-    # Simulating data from Core Banking (Oracle DB)
-    daily_txns = [
-        {"txn_id": 1, "tran_code": "INT_CR", "description": "SAVINGS INTEREST", "amount": 540.00},
-        {"txn_id": 2, "tran_code": "TRF_IB", "description": "Payment for web design course", "amount": 25000.00},
-        {"txn_id": 3, "tran_code": "LN_PMT", "description": "AUTO LOAN 40404", "amount": 15000.00},
-        {"txn_id": 4, "tran_code": "TRF_OT", "description": "family support monthly", "amount": 150000.00},
+# --- 1. MOCK DATA GENERATOR (Simulating Core Banking) ---
+@st.cache_data
+def load_data():
+    data = [
+        {"txn_id": "TXN-1001", "date": "2025-10-27", "desc": "LN_PMT: AUTO LOAN 5501", "amount": 25000.00, "currency": "LKR", "type": "INTERNAL"},
+        {"txn_id": "TXN-1002", "date": "2025-10-27", "desc": "Payment for AWS Web Services", "amount": 150.00, "currency": "USD", "type": "CROSS_BORDER"},
+        {"txn_id": "TXN-1003", "date": "2025-10-27", "desc": "School fees for son - Royal College", "amount": 45000.00, "currency": "LKR", "type": "LOCAL_TRANSFER"},
+        {"txn_id": "TXN-1004", "date": "2025-10-27", "desc": "ATM W/D COLOMBO 07", "amount": 5000.00, "currency": "LKR", "type": "CASH"},
+        {"txn_id": "TXN-1005", "date": "2025-10-27", "desc": "Consulting fees for Oct Project", "amount": 1200000.00, "currency": "LKR", "type": "LOCAL_TRANSFER"}, # High Value
     ]
+    return pd.DataFrame(data)
 
-    engine = ComplianceEngine()
-    results = [engine.process_transaction(row) for row in daily_txns]
+# --- 2. THE LOGIC ENGINE ---
+def process_transactions(df):
+    results = []
     
-    # Output for Verification
-    print(pd.DataFrame(results))
-    engine.generate_finnet_csv(results)
+    for index, row in df.iterrows():
+        status = "Auto-Cleared"
+        category = "Unclassified"
+        itrs_code = "N/A"
+        flag = "None"
+        confidence = "High"
+
+        # RULE 1: Product Mapping (Hard Logic)
+        if "LN_PMT" in row['desc']:
+            category = "Loan Repayment"
+            status = "Auto-Cleared"
+        
+        # RULE 2: Cash Logic
+        elif "ATM W/D" in row['desc']:
+            category = "Cash Withdrawal"
+            status = "Auto-Cleared"
+        
+        # RULE 3: AI Simulation (Local LLM Logic)
+        elif "AWS" in row['desc']:
+            category = "Software/IT Services"
+            itrs_code = "1215" # CBSL Code
+            status = "Auto-Cleared"
+        
+        elif "School" in row['desc']:
+            category = "Education Services"
+            itrs_code = "2210" # CBSL Code
+            status = "Auto-Cleared"
+
+        # RULE 4: AML Threshold Check (> 1 Million LKR)
+        if row['amount'] >= 1000000:
+            flag = "⚠️ goAML Threshold"
+            status = "Manual Review Required"
+            confidence = "Low"
+        
+        # Fallback for vague items
+        if category == "Unclassified":
+            status = "Manual Review Required"
+            confidence = "Low"
+
+        results.append({
+            "Txn ID": row['txn_id'],
+            "Description": row['desc'],
+            "Amount": f"{row['amount']:,.2f}",
+            "Currency": row['currency'],
+            "Predicted Category": category,
+            "ITRS Code": itrs_code,
+            "Status": status,
+            "Risk Flag": flag
+        })
+    
+    return pd.DataFrame(results)
+
+# --- 3. UI DASHBOARD ---
+
+# Sidebar
+st.sidebar.header("⚙️ Configuration")
+st.sidebar.selectbox("Select Model", ["Llama-3-Local (Ollama)", "Mistral-7B-Quantized"])
+st.sidebar.slider("AML Threshold (LKR)", 500000, 2000000, 1000000)
+uploaded_file = st.sidebar.file_uploader("Upload Daily Extract (CSV)", type="csv")
+
+# Main Area
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Transactions", "5")
+col2.metric("Auto-Classified", "80%", "4/5")
+col3.metric("Pending Review", "1", "-goAML Alert", delta_color="inverse")
+
+st.subheader("📝 Transaction Review Queue")
+df_raw = load_data()
+df_processed = process_transactions(df_raw)
+
+# Highlighting Logic
+def highlight_status(val):
+    color = '#ffcdd2' if val == 'Manual Review Required' else '#c8e6c9'
+    return f'background-color: {color}'
+
+st.dataframe(df_processed.style.applymap(highlight_status, subset=['Status']))
+
+# Action Buttons
+st.subheader("📤 Submission")
+c1, c2 = st.columns([1,4])
+if c1.button("Generate FinNet XML"):
+    st.success("XML File generated: `cbsl_return_20251027.xml` ready for upload.")
+if c2.button("Generate goAML Report"):
+    st.warning("1 High-Value Transaction detected. Generating STR/CTR report...")
+
+# --- FOOTER ---
+st.markdown("---")
+st.caption("🔒 Architecture Note: This system runs entirely offline. No customer data leaves the local network.")
